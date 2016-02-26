@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 # coding=utf-8
+
+import os
+import ctypes
+import random
 import CetConfig
-from random import randint
-from ctypes import CDLL, c_char, c_int, byref, \
-    create_string_buffer, Structure, Union
+from ctypes import CDLL, c_char, c_int, byref, create_string_buffer, Structure, Union
 
 try:
     import requests
 except ImportError:
-    print 'You need to install requests to use full functions.'
+    print('You need to install requests to use full functions.')
 
 
 def random_mac():
-    return '%.2X-%.2X-%.2X-%.2X-%.2X-%.2X' % (randint(0, 16), randint(0, 16), 
-                                              randint(0, 16), randint(0, 16), 
-                                              randint(0, 16), randint(0, 16))
+    return '-'.join(['%.2X' % random.randint(0, 16) for i in xrange(6)])
 
 
 DES_cblock = c_char * 8
@@ -39,7 +39,6 @@ class DES_key_schedule(Structure):
 
 
 class CetCipher(object):
-
     ticket_number_key = '(YesuNRY'
     request_data_key = '?!btwNP^'
 
@@ -64,7 +63,6 @@ class CetCipher(object):
         indata = create_string_buffer(indata, length)
         outdata = create_string_buffer(length)
         n = c_int(0)
-
         key = DES_cblock(*tuple(key))
         key_schedule = DES_key_schedule()
 
@@ -95,34 +93,21 @@ class CetCipher(object):
         return self.process_data(request_data, self.request_data_key, is_enc=self.ENCRYPT)
 
 
-class CetCipher(CetCipher):
-
-    ticket_number_enc_key = ')XdsuORX'
-    ticket_number_dec_key = '(YesuNRY'
-
-    def encrypt_ticket_number(self, ticket_number):
-        ciphertext = self.process_data(ticket_number,
-                                       self.ticket_number_enc_key, is_enc=self.ENCRYPT)
-        return ciphertext
-
-    def decrypt_ticket_number(self, ciphertext):
-        ciphertext = ciphertext[2:]
-        return self.process_data(ciphertext, self.ticket_number_enc_key, is_enc=self.DECRYPT)
-
-
 class CetTicket(object):
 
     """
         usage:
         ct = CetTicket()
-        print ct.find_ticket_number(b'浙江', b'浙江海洋学院', b'XXX', cet_type=2)
+        print ct.find_ticket_number('浙江', '浙江海洋学院', 'XXX', cet_type=2)
     """
 
     search_url = 'http://find.cet.99sushe.com/search'
-    score_url = 'http://cet.99sushe.com/find'
+    score_url = 'http://cet.99sushe.com/findscore'
 
     CET4 = 1
     CET6 = 2
+
+    USER_AGENT = os.environ.get('USER_AGENT', '高坂穗乃果')
 
     @classmethod
     def find_ticket_number(cls, province, school, name, examroom='', cet_type=1):
@@ -138,12 +123,10 @@ class CetTicket(object):
         param_data = u'type=%d&provice=%d&school=%s&name=%s&examroom=%s&m=%s' % (cet_type, province_id,
                                                                                                 school, name, 
                                                                                                 examroom, random_mac())
-
         param_data = param_data.encode('gbk')
         encrypted_data = cipher.encrypt_request_data(param_data)
 
-        resp = requests.post(url=cls.search_url, data=encrypted_data)
-
+        resp = requests.post(url=cls.search_url, data=encrypted_data, headers={'User-Agent': cls.USER_AGENT})
         ticket_number = cipher.decrypt_ticket_number(resp.content)
         if ticket_number == '':
             raise TicketNotFound('Cannot find ticket number.')
